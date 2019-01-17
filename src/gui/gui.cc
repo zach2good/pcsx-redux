@@ -37,8 +37,8 @@ void PCSX::GUI::init() {
 
     SDL_Rect r;
     if (SDL_GetDisplayBounds(0, &r) != 0) abort();
-    s_window = SDL_CreateWindow("PCSX-REDUX", 0, 0, r.w, r.h,
-                               SDL_WINDOW_OPENGL | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_BORDERLESS);
+    s_window = SDL_CreateWindow("PCSX-REDUX", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 640, 480,
+                                SDL_WINDOW_OPENGL | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_RESIZABLE);
     assert(s_window);
 
     s_glContext = SDL_GL_CreateContext(s_window);

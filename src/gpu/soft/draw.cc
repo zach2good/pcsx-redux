@@ -245,19 +245,255 @@ void ShowGunCursor(unsigned char *surf) {
     }
 }
 
+
+void checkGL()
+{
+    volatile GLenum error = glGetError();
+    if (error != GL_NO_ERROR) {
+        SDL_TriggerBreakpoint();
+    }
+}
+
+#define GL_SHADER_VERSION "#version 300 es\n"
+
+const GLchar* passThroughVS =
+GL_SHADER_VERSION "\
+\n\
+in  vec2 in_Position;\n\
+in  vec2 in_Texcoord;\n\
+\n\
+out  highp vec2 v_texcoord;     \n\
+void main(void) {\n\
+\n\
+gl_Position = vec4(in_Position.x, in_Position.y, 0.0, 1.0);\n\
+v_texcoord = in_Texcoord;\n\
+}";
+
+const GLchar* PS_16 =
+GL_SHADER_VERSION
+"precision highp float;                                 \n"
+"in highp vec2 v_texcoord;                              \n"
+"                                                       \n"
+"out vec4 FragColor;                                 \n"
+"                                                       \n"
+"uniform sampler2D s_texture;                           \n"
+"                                                       \n"
+"void main(void) {                                      \n"
+"    FragColor = texture(s_texture, v_texcoord);   \n"
+"    FragColor.a = 1.f;"
+"}";
+
+const GLchar* PS_24 =
+GL_SHADER_VERSION
+"precision highp float;                                 \n"
+"in highp vec2 v_texcoord;                              \n"
+"                                                       \n"
+"out vec4 FragColor;                                 \n"
+"                                                       \n"
+"uniform sampler2D s_texture;                           \n"
+"                                                       \n"
+"void main(void) {                                      \n"
+"    FragColor = texture(s_texture, v_texcoord);   \n"
+"    FragColor.a = 1.f;"
+"}";
+
+GLuint compileShader(const char *VS, const char *PS) {
+    GLuint vertexshader = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(vertexshader, 1, &VS, 0);
+    glCompileShader(vertexshader);
+    GLint IsCompiled_VS = 0;
+    glGetShaderiv(vertexshader, GL_COMPILE_STATUS, &IsCompiled_VS);
+    if (IsCompiled_VS == 0) {
+        GLint maxLength;
+        glGetShaderiv(vertexshader, GL_INFO_LOG_LENGTH, &maxLength);
+        char *vertexInfoLog = (char *)malloc(maxLength);
+
+        glGetShaderInfoLog(vertexshader, maxLength, &maxLength, vertexInfoLog);
+
+        assert(false);
+
+        free(vertexInfoLog);
+    }
+
+    GLuint fragmentshader = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(fragmentshader, 1, &PS, 0);
+    glCompileShader(fragmentshader);
+    GLint IsCompiled_PS = 0;
+    glGetShaderiv(fragmentshader, GL_COMPILE_STATUS, &IsCompiled_PS);
+    if (IsCompiled_PS == 0) {
+        GLint maxLength;
+        glGetShaderiv(fragmentshader, GL_INFO_LOG_LENGTH, &maxLength);
+        char *fragmentInfoLog = (char *)malloc(maxLength);
+
+        glGetShaderInfoLog(fragmentshader, maxLength, &maxLength, fragmentInfoLog);
+
+        assert(false);
+
+        free(fragmentInfoLog);
+    }
+
+    GLuint shaderprogram = glCreateProgram();
+    glAttachShader(shaderprogram, vertexshader);
+    glAttachShader(shaderprogram, fragmentshader);
+
+    glLinkProgram(shaderprogram);
+
+    GLint IsLinked = 0;
+    glGetProgramiv(shaderprogram, GL_LINK_STATUS, &IsLinked);
+    assert(IsLinked);
+
+    return shaderprogram;
+}
+
+
+struct s_vertexData {
+    float positions[3];
+    float textures[2];
+};
+
+void DrawFullscreenQuad(int is24Bit)
+{
+    static GLuint vao_handle = 0;
+    if (vao_handle == 0)
+    {
+        glGenVertexArrays(1, &vao_handle);
+    }
+    
+    glBindVertexArray(vao_handle);
+
+
+    static GLuint shaderprogram16 = 0;
+    static GLuint shaderprogram24 = 0;
+    static GLuint vertexp = 0;
+    static GLuint texcoordp = 0;
+
+    if (shaderprogram16 == 0) {
+        shaderprogram16 = compileShader(passThroughVS, PS_16);
+        vertexp = glGetAttribLocation(shaderprogram16, (const GLchar *)"in_Position");
+        texcoordp = glGetAttribLocation(shaderprogram16, (const GLchar *)"in_Texcoord");
+    }
+    if (shaderprogram24 == 0) {
+        shaderprogram24 = compileShader(passThroughVS, PS_24);
+        assert(vertexp == glGetAttribLocation(shaderprogram24, (const GLchar *)"in_Position"));
+        assert(texcoordp == glGetAttribLocation(shaderprogram24, (const GLchar *)"in_Texcoord"));
+    }
+
+    if (is24Bit)
+    {
+        glUseProgram(shaderprogram24);
+    } else {
+        glUseProgram(shaderprogram16);
+    }
+
+    static GLuint vbo = 0;
+    if (vbo == 0) {
+        glGenBuffers(1, &vbo);
+    }
+
+            s_vertexData quadVertices[6];
+
+    quadVertices[0].positions[0] = -1;
+    quadVertices[0].positions[1] = -1;
+    quadVertices[0].positions[2] = 0;
+    quadVertices[0].textures[0] = PSXDisplay.DisplayPosition.x / 1024.f;
+    quadVertices[0].textures[1] = PSXDisplay.DisplayPosition.y / 512.f;
+
+    quadVertices[1].positions[0] = 1;
+    quadVertices[1].positions[1] = -1;
+    quadVertices[1].positions[2] = 0;
+    quadVertices[1].textures[0] = PSXDisplay.DisplayEnd.x / 1024.f;
+    quadVertices[1].textures[1] = PSXDisplay.DisplayPosition.y / 512.f;
+
+    quadVertices[2].positions[0] = 1;
+    quadVertices[2].positions[1] = 1;
+    quadVertices[2].positions[2] = 0;
+    quadVertices[2].textures[0] = PSXDisplay.DisplayEnd.x / 1024.f;
+    quadVertices[2].textures[1] = PSXDisplay.DisplayEnd.y / 512.f;
+
+    quadVertices[3].positions[0] = -1;
+    quadVertices[3].positions[1] = -1;
+    quadVertices[3].positions[2] = 0;
+    quadVertices[3].textures[0] = PSXDisplay.DisplayPosition.x / 1024.f;
+    quadVertices[3].textures[1] = PSXDisplay.DisplayPosition.y / 512.f;
+
+    quadVertices[4].positions[0] = -1;
+    quadVertices[4].positions[1] = 1;
+    quadVertices[4].positions[2] = 0;
+    quadVertices[4].textures[0] = PSXDisplay.DisplayPosition.x / 1024.f;
+    quadVertices[4].textures[1] = PSXDisplay.DisplayEnd.y / 512.f;
+
+    quadVertices[5].positions[0] = 1;
+    quadVertices[5].positions[1] = 1;
+    quadVertices[5].positions[2] = 0;
+    quadVertices[5].textures[0] = PSXDisplay.DisplayEnd.x / 1024.f;
+    quadVertices[5].textures[1] = PSXDisplay.DisplayEnd.y / 512.f;
+
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    checkGL();
+    glBufferData(GL_ARRAY_BUFFER, sizeof(s_vertexData) * 6, &quadVertices[0], GL_STATIC_DRAW);
+    checkGL();
+
+    glDisable(GL_CULL_FACE);
+    checkGL();
+    glDisable(GL_DEPTH_TEST);
+    checkGL();
+
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    checkGL();
+    glVertexAttribPointer(vertexp, 3, GL_FLOAT, GL_FALSE, sizeof(s_vertexData),
+                          (void *)&((s_vertexData *)NULL)->positions);
+    checkGL();
+    glEnableVertexAttribArray(vertexp);
+    checkGL();
+
+    if (texcoordp != -1) {
+        glVertexAttribPointer(texcoordp, 2, GL_FLOAT, GL_FALSE, sizeof(s_vertexData),
+                              (void *)&((s_vertexData *)NULL)->textures);
+        glEnableVertexAttribArray(texcoordp);
+    }
+
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    checkGL();
+
+    // cleanup!
+    glUseProgram(0);
+    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
+
 void DoBufferSwap() {
     m_gui->bindVRAMTexture();
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 1024, 512, GL_RGBA, GL_UNSIGNED_SHORT_1_5_5_5_REV, psxVuw);
     m_gui->checkGL();
 
+    static GLuint vramTexture = 0;
+    if (vramTexture == 0)
+    {
+        glGenTextures(1, &vramTexture);
+        m_gui->checkGL();
+        glBindTexture(GL_TEXTURE_2D, vramTexture);
+        m_gui->checkGL();
+        glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGB8, 1024, 512);
+        m_gui->checkGL();
+    }
+
     LONG x, y;
     x = PSXDisplay.DisplayPosition.x;
     y = PSXDisplay.DisplayPosition.y;
     if (PSXDisplay.RGB24) {
-        BlitScreen32(textureMem, x, y);
-        glBindTexture(GL_TEXTURE_2D, textureId);
+        glBindTexture(GL_TEXTURE_2D, vramTexture);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 1024, 512, GL_RGB, GL_UNSIGNED_BYTE, psxVuw);
+        m_gui->checkGL();
+
+        DrawFullscreenQuad(PSXDisplay.RGB24);
     } else {
+        m_gui->bindVRAMTexture();
+
+        DrawFullscreenQuad(PSXDisplay.RGB24);
     }
+
     glBindTexture(GL_TEXTURE_2D, 0);
     m_gui->checkGL();
     m_gui->flip();
